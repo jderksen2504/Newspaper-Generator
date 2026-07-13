@@ -1,0 +1,94 @@
+# ============================================================================
+# Dependencies
+# ============================================================================
+node_modules/
+src-tauri/sidecars/playwright-export/node_modules/
+
+# ============================================================================
+# Build artifacts
+# ============================================================================
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# ============================================================================
+# Self-hosted Web-Fonts (werden via `node scripts/download-fonts.js` gezogen)
+# Nicht einchecken — sie sind ~1 MB und ändern sich selten, aber sie gehören
+# nicht ins Repo, da sie via Build-Skript reproduzierbar sind.
+# ============================================================================
+src/fonts/*.woff2
+src/fonts/*.ttf
+src/fonts/*.woff
+
+# ============================================================================
+# Playwright Cache (lokal, wenn man `npx playwright install chromium` laufen lässt)
+# ============================================================================
+playwright-cache/
+.cache/
+
+# ============================================================================
+# OS-spezifische Dateien
+# ============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# ============================================================================
+# IDE / Editor
+# ============================================================================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ============================================================================
+# Logs & Temporäre Dateien
+# ============================================================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# ============================================================================
+# Tauri Build-Tools
+# ============================================================================
+src-tauri/WixTools/
+src-tauri/.tauri/
+
+# ============================================================================
+# Umgebungsvariablen & Secrets
+# ============================================================================
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ============================================================================
+# GitHub Actions (nur .github-Ordner ignorieren ist nie gewollt)
+# ============================================================================
+# Nichts — .github/workflows soll eingecheckt werden!

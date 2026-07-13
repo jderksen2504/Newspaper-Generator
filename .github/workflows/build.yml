@@ -1,0 +1,342 @@
+name: Build Desktop App
+
+# ============================================================================
+# Buildet die Tauri-App für macOS (Universal Binary) und Windows (x64).
+#
+# Das Tauri-Projekt liegt im Unterverzeichnis `desktop/`. Alle `run:`-Steps
+# haben per `defaults.run.working-directory: desktop` dieses Verzeichnis als
+# Arbeitsverzeichnis.
+#
+# Trigger:
+#   - Manuell über den "Run workflow" Button im Actions-Tab
+#   - Automatisch bei Tags wie v1.0.0 (erzeugt einen GitHub Release)
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_macos:
+        description: "macOS Universal Binary bauen"
+        required: true
+        default: true
+        type: boolean
+      build_windows:
+        description: "Windows x64 bauen"
+        required: true
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+# Globale Berechtigungen für die Release-Erstellung
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================================================
+  # Build-Job: macOS (Universal Binary)
+  # ==========================================================================
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    # Läuft bei:
+    #   - Tags (auto-release)
+    #   - Manuellen Triggern, wenn build_macos nicht deaktiviert wurde
+    if: |
+      github.event_name == 'push' ||
+      github.event.inputs.build_macos != 'false'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------------
+      # Setup
+      # ----------------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Setup Python (for icon generation)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Pillow
+        run: pip install Pillow
+
+      # ----------------------------------------------------------------------
+      # Caching
+      # ----------------------------------------------------------------------
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('desktop/**/Cargo.lock', 'desktop/**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Cache Playwright WebKit
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: ${{ runner.os }}-playwright-webkit-v1
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      # ----------------------------------------------------------------------
+      # Dependencies installieren
+      # ----------------------------------------------------------------------
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Download self-hosted Web-Fonts
+        run: node scripts/download-fonts.js
+
+      - name: Install sidecar dependencies
+        working-directory: desktop/src-tauri/sidecars/playwright-export
+        run: npm ci
+
+      - name: Install Playwright WebKit (pixelidentisch mit Tauri-Vorschau)
+        run: npx playwright install webkit
+
+      # ----------------------------------------------------------------------
+      # App-Icon generieren (falls nicht vorhanden)
+      # ----------------------------------------------------------------------
+      - name: Create placeholder app icon
+        run: |
+          mkdir -p src-tauri/icons
+          if [ ! -f src-tauri/icons/icon.png ]; then
+            python3 -c "
+          from PIL import Image, ImageDraw, ImageFont
+          img = Image.new('RGBA', (1024, 1024), (245, 236, 215, 255))
+          d = ImageDraw.Draw(img)
+          for w in [16, 8, 4]:
+              d.rectangle([w, w, 1024-w, 1024-w], outline=(26, 18, 8, 255), width=w)
+          try:
+              font = ImageFont.truetype('/System/Library/Fonts/Supplemental/Times New Roman.ttf', 400)
+          except:
+              font = ImageFont.load_default()
+          text = 'IH'
+          bbox = d.textbbox((0,0), text, font=font)
+          w = bbox[2]-bbox[0]; h = bbox[3]-bbox[1]
+          d.text(((1024-w)/2 - bbox[0], (1024-h)/2 - bbox[1]), text, fill=(26, 18, 8, 255), font=font)
+          img.save('src-tauri/icons/icon.png')
+          "
+            echo "Placeholder icon created"
+          fi
+          ls -la src-tauri/icons/
+
+      - name: Generate Tauri icons
+        run: npx @tauri-apps/cli icon src-tauri/icons/icon.png
+
+      # ----------------------------------------------------------------------
+      # Tauri-App bauen (Universal Binary)
+      # ----------------------------------------------------------------------
+      - name: Build Tauri app
+        run: npx @tauri-apps/cli build --target universal-apple-darwin
+
+      # ----------------------------------------------------------------------
+      # Artifact hochladen
+      # ----------------------------------------------------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: newspaper-generator-macos-universal
+          path: |
+            desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+          retention-days: 30
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Build-Job: Windows (x64)
+  # ==========================================================================
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    if: |
+      github.event_name == 'push' ||
+      github.event.inputs.build_windows != 'false'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------------
+      # Setup
+      # ----------------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python (for icon generation)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Pillow
+        run: pip install Pillow
+
+      # ----------------------------------------------------------------------
+      # Caching
+      # ----------------------------------------------------------------------
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('desktop/**/Cargo.lock', 'desktop/**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Cache Playwright WebKit
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\ms-playwright
+          key: ${{ runner.os }}-playwright-webkit-v1
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      # ----------------------------------------------------------------------
+      # Dependencies installieren
+      # ----------------------------------------------------------------------
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Download self-hosted Web-Fonts
+        run: node scripts/download-fonts.js
+
+      - name: Install sidecar dependencies
+        working-directory: desktop/src-tauri/sidecars/playwright-export
+        run: npm ci
+
+      - name: Install Playwright WebKit (pixelidentisch mit Tauri-Vorschau)
+        run: npx playwright install webkit
+
+      # ----------------------------------------------------------------------
+      # App-Icon generieren (falls nicht vorhanden)
+      # ----------------------------------------------------------------------
+      - name: Create placeholder app icon
+        run: |
+          mkdir -p src-tauri/icons
+          if (-not (Test-Path "src-tauri/icons/icon.png")) {
+            python -c @"
+          from PIL import Image, ImageDraw, ImageFont
+          img = Image.new('RGBA', (1024, 1024), (245, 236, 215, 255))
+          d = ImageDraw.Draw(img)
+          for w in [16, 8, 4]:
+              d.rectangle([w, w, 1024-w, 1024-w], outline=(26, 18, 8, 255), width=w)
+          try:
+              font = ImageFont.truetype('C:/Windows/Fonts/times.ttf', 400)
+          except:
+              font = ImageFont.load_default()
+          text = 'IH'
+          bbox = d.textbbox((0,0), text, font=font)
+          w = bbox[2]-bbox[0]; h = bbox[3]-bbox[1]
+          d.text(((1024-w)/2 - bbox[0], (1024-h)/2 - bbox[1]), text, fill=(26, 18, 8, 255), font=font)
+          img.save('src-tauri/icons/icon.png')
+          "@
+            Write-Host "Placeholder icon created"
+          }
+          Get-ChildItem src-tauri/icons/
+        shell: pwsh
+
+      - name: Generate Tauri icons
+        run: npx @tauri-apps/cli icon src-tauri/icons/icon.png
+
+      # ----------------------------------------------------------------------
+      # Tauri-App bauen (Windows x64)
+      # ----------------------------------------------------------------------
+      - name: Build Tauri app
+        run: npx @tauri-apps/cli build
+
+      # ----------------------------------------------------------------------
+      # Artifacts hochladen
+      # ----------------------------------------------------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: newspaper-generator-windows-x64
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 30
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Release-Job: Nur bei Tags (v1.0.0 etc.) — lädt alle Builds in ein Release
+  # ==========================================================================
+  release:
+    name: Create GitHub Release
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    # Auch bei `if: false`-Bedingung der Builds — `needs` mit `if: always()`
+    # würde auch fehlerhafte Jobs abwarten. Hier: nur wenn builds erfolgreich.
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | head -50
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.exe
+          draft: false
+          generate_release_notes: true
+          name: Release ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,12 @@
+{
+  "name": "playwright-export-sidecar",
+  "version": "1.1.0",
+  "description": "Headless-WebKit PNG/PDF renderer for the Newspaper Generator Tauri sidecar",
+  "private": true,
+  "type": "commonjs",
+  "main": "export.js",
+  "dependencies": {
+    "playwright-core": "^1.49.0",
+    "pdf-lib": "^1.17.1"
+  }
+}

@@ -1,0 +1,35 @@
+[package]
+name = "newspaper-generator"
+version = "1.4.0"
+description = "Newspaper Generator für D&D Kampagnen"
+authors = ["D&D Newspaper Generator"]
+edition = "2021"
+rust-version = "1.77"
+
+# Tauri Sidecar Binärformat — Node.js wird mitgeliefert
+# `playwright-export` ist ein Node-Skript, das via `bun` oder `node` ausgeführt wird
+
+[lib]
+name = "newspaper_generator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+which = "7"
+thiserror = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
