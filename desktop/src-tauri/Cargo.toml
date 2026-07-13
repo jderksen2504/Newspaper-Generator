@@ -1,6 +1,6 @@
 [package]
 name = "newspaper-generator"
-version = "1.4.0"
+version = "1.4.1"
 description = "Newspaper Generator für D&D Kampagnen"
 authors = ["D&D Newspaper Generator"]
 edition = "2021"

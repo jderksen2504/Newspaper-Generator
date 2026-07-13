@@ -1,6 +1,6 @@
 {
   "name": "newspaper-generator",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Newspaper Generator für D&D Kampagnen — Tauri 2.0 + Playwright Sidecar",
   "license": "GPL-3.0-only",
   "type": "module",
