@@ -257,32 +257,47 @@ if ($PwWebkitFound) {
     Write-Ok "Playwright WebKit found."
 } else {
     Write-Step "Installing Playwright WebKit browser (~80 MB, one-time download)..."
-    # Use the sidecar's bundled playwright-core if available
+    # IMPORTANT: npx writes its progress bar to stderr. PowerShell 5.1 with
+    # $ErrorActionPreference="Stop" treats every stderr line as a terminating
+    # error (NativeCommandError). We work around this by invoking npx through
+    # `cmd /c` so stderr is merged inside cmd.exe — PowerShell only sees stdout.
     $SidecarDir = Join-Path $InstallDir "resources\sidecars\playwright-export"
-    if (Test-Path (Join-Path $SidecarDir "node_modules\playwright-core")) {
-        Push-Location $SidecarDir
-        try {
-            & npx playwright install webkit 2>&1 | Select-Object -Last 5
-        } finally {
-            Pop-Location
+    $PwInstallSuccess = $false
+    try {
+        if (Test-Path (Join-Path $SidecarDir "node_modules\playwright-core")) {
+            Push-Location $SidecarDir
+            try {
+                $output = cmd /c "npx playwright install webkit 2>&1"
+                if ($LASTEXITCODE -eq 0) { $PwInstallSuccess = $true }
+                if ($output) { $output | Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray } }
+            } finally {
+                Pop-Location
+            }
+        } else {
+            # Fallback: install playwright globally via npx
+            $output = cmd /c "npx --yes playwright@latest install webkit 2>&1"
+            if ($LASTEXITCODE -eq 0) { $PwInstallSuccess = $true }
+            if ($output) { $output | Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray } }
         }
-    } else {
-        # Fallback: install globally
-        & npx --yes playwright@latest install webkit 2>&1 | Select-Object -Last 5
+    } catch {
+        # Even if PowerShell catches something, the install may have completed
+        Write-Warn "npx invocation reported an error: $($_.Exception.Message)"
     }
 
-    # Verify
+    # Verify by checking for the browser binary
     if (Test-Path $PwCache) {
         $PwWebkitExe = Get-ChildItem -Path $PwCache -Recurse -Filter "Playwright.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($PwWebkitExe) {
             Write-Ok "Playwright WebKit installed."
         } else {
             Write-Warn "Could not verify Playwright WebKit installation."
-            Write-Warn "If PNG export fails, run manually: npx playwright install webkit"
+            Write-Warn "If PNG export fails, run manually in PowerShell:"
+            Write-Warn "  npx playwright install webkit"
         }
     } else {
         Write-Warn "Could not verify Playwright WebKit installation."
-        Write-Warn "If PNG export fails, run manually: npx playwright install webkit"
+        Write-Warn "If PNG export fails, run manually in PowerShell:"
+        Write-Warn "  npx playwright install webkit"
     }
 }
 
