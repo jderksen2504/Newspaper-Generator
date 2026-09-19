@@ -184,20 +184,20 @@ Write-Host ""
 Write-Step "Checking runtime dependencies for PNG/PDF export..."
 
 # --- Node.js ---
-# WICHTIG: Wir akzeptieren nur Node v20.x als kompatibel.
-# v22+ (insb. v24 LTS) hat ein strikteres Path-Handling, das mit unserem
-# Rust-Backend kollidiert. v1.4.2+ hat zwar einen Rust-Fix, der v24
-# ebenfalls handhabt, aber wir bleiben bei v20 aus Konsistenzgründen.
+# Ab v1.4.2 funktioniert die App mit jeder Node.js-Version ab v20
+# (der Rust-Sidecar verwendet current_dir + relativen Dateinamen,
+# was Node v24's strikteres Path-Handling umgeht). Wir versuchen
+# nur noch Node zu installieren, wenn GAR KEINES vorhanden ist oder
+# die Version älter als v20 ist. Eine v24-Installation lassen wir
+# in Ruhe — kein Downgrade nötig.
 $NeedNode = $true
 try {
     $NodeOutput = & node --version 2>$null
     if ($LASTEXITCODE -eq 0 -and $NodeOutput -match '^v(\d+)') {
         $NodeMajor = [int]$Matches[1]
-        if ($NodeMajor -eq 20) {
+        if ($NodeMajor -ge 20) {
             Write-Ok "Node.js $NodeOutput found."
             $NeedNode = $false
-        } elseif ($NodeMajor -ge 22) {
-            Write-Warn "Node.js $NodeOutput found, but v20.x is required (v22+ has stricter path handling). Replacing with v20.18.1..."
         } else {
             Write-Warn "Node.js $NodeOutput found, but v20+ required. Upgrading..."
         }
@@ -206,19 +206,10 @@ try {
 
 if ($NeedNode) {
     Write-Step "Installing Node.js v20.18.1 (pinned for compatibility)..."
-    # WICHTIG: Wir pinen auf Node v20.18.1, NICHT auf "LTS".
-    # Hintergrund: Node v24 wurde im Oktober 2025 zum neuen Active LTS,
-    # und winget's OpenJS.NodeJS.LTS installiert mittlerweile v24.
-    # Node v24 hat aber ein strikteres Path-Handling als v20 — unser
-    # Rust-Backend übergibt absolute Windows-Pfade an Node, was bei v24
-    # zu EISDIR-Fehlern führt. Daher pinen wir auf v20.18.1.
-    #
-    # Falls v24 bereits installiert ist (z. B. vorher über OpenJS.NodeJS.LTS
-    # installiert), installiert winget v20 mit dem Package "OpenJS.NodeJS"
-    # parallel — solange wir die Version spezifizieren. Node v20 landet
-    # dann in C:\Program Files\nodejs\ und ersetzt v24 (per-machine install).
-    #
-    # Try winget first (built into Windows 10/11), pinned to v20.18.1
+    # Pin auf v20.18.1 statt "LTS" — denn seit Oktober 2025 ist v24 das
+    # neue Active LTS, und winget's OpenJS.NodeJS.LTS installiert v24.
+    # v24 funktioniert zwar mit v1.4.2+ der App auch, aber für Neu-
+    # installationen bleiben wir bei v20 aus Konsistenzgründen.
     $WingetResult = $null
     try {
         $WingetResult = & winget install OpenJS.NodeJS --version 20.18.1 --accept-package-agreements --accept-source-agreements --silent 2>&1
