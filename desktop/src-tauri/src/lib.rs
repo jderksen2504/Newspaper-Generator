@@ -298,8 +298,28 @@ async fn run_sidecar_export(
         compression
     );
 
+    // WICHTIG: Wir setzen das Arbeitsverzeichnis auf das Sidecar-Verzeichnis
+    // und übergeben nur den relativen Dateinamen "export.js" an Node — nicht
+    // den vollständigen Windows-Pfad.
+    //
+    // Hintergrund: Node.js v24 hat ein strikteres Path-Handling als v20.
+    // Wenn der vollständige Windows-Pfad (z. B. "C:\Users\...\export.js")
+    // als Script-Argument übergeben wird, versucht Node v24, den Pfad via
+    // realpathSync aufzulösen und scheitert mit EISDIR auf dem Drive-Letter
+    // ("lstat 'C:'" — illegal operation on a directory).
+    //
+    // Mit current_dir + relativem Dateinamen muss Node keinen absoluten
+    // Pfad auflösen — es sucht einfach "export.js" im aktuellen Verzeichnis.
+    // Das funktioniert mit Node v20, v22, v24 und allen zukünftigen Versionen.
+    let sidecar_dir = resource_path
+        .parent()
+        .ok_or_else(|| AppError::Sidecar(
+            "Konnte Sidecar-Verzeichnis nicht ermitteln (resource_path hat kein parent)".to_string()
+        ))?;
+
     let output = Command::new(&node_bin)
-        .arg(&resource_path)
+        .current_dir(sidecar_dir)
+        .arg("export.js")
         .arg(&temp_project_path)
         .arg(output_prefix)
         .arg(mode)
